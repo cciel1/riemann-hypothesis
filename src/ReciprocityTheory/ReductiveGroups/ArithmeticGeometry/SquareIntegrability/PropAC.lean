@@ -1,5 +1,6 @@
 module
 
+import Lemmata.GeneralBFactSecondBisForm.Goal1
 public import ReciprocityTheory.ReductiveGroups.ArithmeticGeometry.SquareIntegrability.GaussianTailBound
 public import ReciprocityTheory.ReductiveGroups.ArithmeticGeometry.SquareIntegrability.PropABSt
 import Mathlib.Algebra.Order.Star.Real
@@ -109,58 +110,23 @@ theorem paTh_bound (hP : Ext.PackingCount) (hA : Ext.GaussianTailBound) (Y : GT 
         gcongr
     _ = M * Real.exp (-b * t ^ 2 / 16) := by rw [hM]
 
-theorem pa_cauchy1 {H : EuclideanSpace ℂ ι → ℂ} (hH : Differentiable ℂ H) (y : EuclideanSpace ℂ ι)
-    (j : ι) {M : ℝ} (hM : ∀ t : ℂ, ‖t‖ = 1 → ‖H (y + t • EuclideanSpace.single j 1)‖ ≤ M) :
-    ‖fderiv ℂ H y (EuclideanSpace.single j 1)‖ ≤ M := by
-  set g : ℂ → ℂ := fun t => H (y + t • EuclideanSpace.single j 1) with hgdef
-  have hl : HasDerivAt (fun t : ℂ => y + t • EuclideanSpace.single j (1 : ℂ)) (EuclideanSpace.single j 1) 0 := by
-    simpa using ((hasDerivAt_id (0 : ℂ)).smul_const (EuclideanSpace.single j (1 : ℂ))).const_add y
-  have hg : Differentiable ℂ g := fun t =>
-    (hH _).comp t (differentiableAt_const _ |>.add (differentiableAt_id.smul_const _))
-  have hd : deriv g 0 = fderiv ℂ H y (EuclideanSpace.single j 1) := by
-    have h2 := (hH (y + (0 : ℂ) • EuclideanSpace.single j 1)).hasFDerivAt.comp_hasDerivAt (0 : ℂ) hl
-    simp only [zero_smul, add_zero] at h2
-    exact h2.deriv
-  rw [← hd]
-  have h3 := Complex.norm_deriv_le_of_forall_mem_sphere_norm_le (f := g) (c := 0) (R := 1) one_pos
-    hg.diffContOnCl (fun t ht => hM t (by simpa using ht))
-  simpa using h3
-
-theorem pa_opNorm_le (L : EuclideanSpace ℂ ι →L[ℂ] ℂ) :
-    ‖L‖ ≤ ∑ j, ‖L (EuclideanSpace.single j 1)‖ := by
-  refine ContinuousLinearMap.opNorm_le_bound _ (Finset.sum_nonneg fun j _ => norm_nonneg _) fun v => ?_
-  have hv : v = ∑ j, v j • EuclideanSpace.single j (1 : ℂ) := by
-    ext i
-    simp [Pi.single_apply, mul_ite, Finset.sum_ite_eq]
-  calc ‖L v‖ = ‖∑ j, v j • L (EuclideanSpace.single j 1)‖ := by
-        conv_lhs => rw [hv]
-
-        rw [map_sum]
-        simp only [map_smul]
-    _ ≤ ∑ j, ‖v j‖ * ‖L (EuclideanSpace.single j 1)‖ :=
-        (norm_sum_le _ _).trans (le_of_eq (Finset.sum_congr rfl fun j _ => norm_smul _ _))
-    _ ≤ ∑ j, ‖v‖ * ‖L (EuclideanSpace.single j 1)‖ :=
-        Finset.sum_le_sum fun j _ => mul_le_mul_of_nonneg_right (PiLp.norm_apply_le v j) (norm_nonneg _)
-    _ = (∑ j, ‖L (EuclideanSpace.single j 1)‖) * ‖v‖ := by
-        rw [Finset.sum_mul]
-        exact Finset.sum_congr rfl fun j _ => mul_comm _ _
+theorem pa_fderiv_norm {κ : Type} (G : κ → EuclideanSpace ℂ ι → ℂ) (hG : ∀ k, Differentiable ℂ (G k))
+    (R : ℝ) (u : κ → ℝ) (hu : ∀ k v, ‖v‖ ≤ R + 1 → ‖G k v‖ ≤ u k) :
+    ∀ k y, ‖y‖ ≤ R → ‖fderiv ℂ (G k) y‖ ≤ u k := by
+  intro k y hy
+  have hb (z) (hz : z ∈ ball y 1) : ‖G k z‖ ≤ u k := by
+    apply hu
+    calc ‖z‖ = dist z 0 := (dist_zero_right _).symm
+         _ ≤ dist z y + dist y 0 := dist_triangle _ _ _
+         _ ≤ R + 1 := by rw [dist_zero_right]; linarith [mem_ball.mp hz]
+  simpa only [div_one] using Bl.general_b_fact_second_bis_form.goal1 one_pos (hG k).differentiableOn hb
 
 theorem pa_fderiv_bound {κ : Type} (G : κ → EuclideanSpace ℂ ι → ℂ) (hG : ∀ k, Differentiable ℂ (G k))
     (R : ℝ) (u : κ → ℝ) (hu : ∀ k v, ‖v‖ ≤ R + 1 → ‖G k v‖ ≤ u k) (j : ι) :
     ∀ k y, ‖y‖ ≤ R → ‖fderiv ℂ (G k) y (EuclideanSpace.single j 1)‖ ≤ u k := by
   intro k y hy
-  refine pa_cauchy1 (hG k) y j fun t ht => hu k _ ?_
-  calc ‖y + t • EuclideanSpace.single j (1 : ℂ)‖ ≤ ‖y‖ + ‖t • EuclideanSpace.single j (1 : ℂ)‖ := norm_add_le _ _
-    _ = ‖y‖ + 1 := by rw [norm_smul, PiLp.norm_single, ht, norm_one, mul_one]
-    _ ≤ R + 1 := by linarith
-
-theorem pa_fderiv_norm {κ : Type} (G : κ → EuclideanSpace ℂ ι → ℂ) (hG : ∀ k, Differentiable ℂ (G k))
-    (R : ℝ) (u : κ → ℝ) (hu : ∀ k v, ‖v‖ ≤ R + 1 → ‖G k v‖ ≤ u k) :
-    ∀ k y, ‖y‖ ≤ R → ‖fderiv ℂ (G k) y‖ ≤ Fintype.card ι * u k := by
-  intro k y hy
-  calc ‖fderiv ℂ (G k) y‖ ≤ ∑ j, ‖fderiv ℂ (G k) y (EuclideanSpace.single j 1)‖ := pa_opNorm_le _
-    _ ≤ ∑ _j : ι, u k := Finset.sum_le_sum fun j _ => pa_fderiv_bound G hG R u hu j k y hy
-    _ = Fintype.card ι * u k := by rw [Finset.sum_const, Finset.card_univ, nsmul_eq_mul]
+  exact ((fderiv ℂ (G k) y).le_opNorm _).trans (by
+    simpa only [PiLp.norm_single, norm_one, mul_one] using pa_fderiv_norm G hG R u hu k y hy)
 
 theorem pa_tsum_hasFDeriv {κ : Type} (G : κ → EuclideanSpace ℂ ι → ℂ) (hG : ∀ k, Differentiable ℂ (G k))
     (hb : ∀ R : ℝ, ∃ u : κ → ℝ, Summable u ∧ ∀ k v, ‖v‖ ≤ R → ‖G k v‖ ≤ u k)
@@ -168,16 +134,15 @@ theorem pa_tsum_hasFDeriv {κ : Type} (G : κ → EuclideanSpace ℂ ι → ℂ)
     Summable (fun k => fderiv ℂ (G k) x) ∧
       HasFDerivAt (fun y => ∑' k, G k y) (∑' k, fderiv ℂ (G k) x) x := by
   obtain ⟨u, hsu, hu⟩ := hb (‖x‖ + 1 + 1)
-  have hbd : ∀ k y, ‖y‖ ≤ ‖x‖ + 1 → ‖fderiv ℂ (G k) y‖ ≤ Fintype.card ι * u k :=
+  have hbd : ∀ k y, ‖y‖ ≤ ‖x‖ + 1 → ‖fderiv ℂ (G k) y‖ ≤ u k :=
     pa_fderiv_norm G hG (‖x‖ + 1) u hu
-  have hsu' : Summable (fun k => (Fintype.card ι : ℝ) * u k) := hsu.mul_left _
   have hxs : x ∈ ball (0 : EuclideanSpace ℂ ι) (‖x‖ + 1) := by simp
   have hball : ∀ y ∈ ball (0 : EuclideanSpace ℂ ι) (‖x‖ + 1), ‖y‖ ≤ ‖x‖ + 1 := fun y hy => by
     simpa using (mem_ball_zero_iff.1 hy).le
-  refine ⟨hsu'.of_norm_bounded (fun k => hbd k x (by linarith)), ?_⟩
+  refine ⟨hsu.of_norm_bounded (fun k => hbd k x (by linarith)), ?_⟩
   have hs0 : Summable (fun k => G k x) :=
     hsu.of_norm_bounded (fun k => hu k x (by linarith [norm_nonneg x]))
-  exact hasFDerivAt_tsum_of_isPreconnected hsu' isOpen_ball (convex_ball _ _).isPreconnected
+  exact hasFDerivAt_tsum_of_isPreconnected hsu isOpen_ball (convex_ball _ _).isPreconnected
     (fun k y _ => (hG k y).hasFDerivAt) (fun k y hy => hbd k y (hball y hy)) hxs hs0 hxs
 
 theorem pa_contDiff_of_diff {S : EuclideanSpace ℂ ι → ℂ} (hS : Differentiable ℂ S) :
@@ -291,7 +256,7 @@ theorem paTh_sec (Y : GT ι) {q : ℕ}
   refine ⟨hd, fun γ hγ v => ?_⟩
   show ∑' γ' : lat Y.b, Y.ka γ' * paU q γ' F (v + γ) =
     Y.ka γ * cexp (q * Real.pi * Hf v γ + q * Real.pi * Hf γ γ / 2) * ∑' γ' : lat Y.b, Y.ka γ' * paU q γ' F v
-  rw [← (Equiv.addRight (⟨γ, hγ⟩ : lat Y.b)).tsum_eq, ← tsum_mul_left]
+  rw [← (Equiv.addRight (⟨γ, hγ⟩ : lat Y.b)).tsum_eq, ← (hs v).tsum_mul_left _]
   refine tsum_congr fun γ'' => ?_
   obtain ⟨kk, hkk⟩ := Y.integral γ γ'' hγ γ''.2
   simp only [Equiv.coe_addRight, Submodule.coe_add, paU]
