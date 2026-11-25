@@ -1,5 +1,6 @@
 module
 
+import Mathlib.LinearAlgebra.Dual.Lemmas
 public import Mathlib.LinearAlgebra.Trace
 public import Mathlib.RepresentationTheory.Basic
 
@@ -9,9 +10,9 @@ open Module
 
 namespace Bl.RankOneOrbitForms
 
-variable {K : Type} [Field K] {G : Type} [Group G] {T : Type} [AddCommGroup T] [Module K T] [FiniteDimensional K T]
+variable {K : Type} [Field K] {G : Type} [Group G] {T : Type} [AddCommGroup T] [Module K T]
 
-private lemma rank_one_form (f : T →ₗ[K] T) (h1 : finrank K (LinearMap.range f) = 1) :
+private lemma rank_one_form [FiniteDimensional K T] (f : T →ₗ[K] T) (h1 : finrank K (LinearMap.range f) = 1) :
     ∃ (φ : T →ₗ[K] K) (v : T), v ≠ 0 ∧ φ ≠ 0 ∧ f = φ.smulRight v := by
   let e : LinearMap.range f ≃ₗ[K] K := LinearEquiv.ofFinrankEq _ _ (by simpa using h1)
   let φ := e.toLinearMap.comp f.rangeRestrict
@@ -40,29 +41,21 @@ private lemma span_orbit (τ : Representation K G T)
     Submodule.subset_span ⟨1, by simp⟩
   exact (hirr _ hinvar).resolve_left fun h => hv (by simpa [h] using hvspan)
 
-private lemma orbit_ker (τ : Representation K G T)
-    (hirr : ∀ W : Submodule K T, (∀ g : G, ∀ w ∈ W, τ g w ∈ W) → W = ⊥ ∨ W = ⊤)
-    (φ : T →ₗ[K] K) (hφ : φ ≠ 0) (x : T) (hx : ∀ g, φ (τ g x) = 0) : x = 0 := by
-  by_contra hx0
-  have hle : Submodule.span K (Set.range fun g => τ g x) ≤ LinearMap.ker φ := by
-    rw [Submodule.span_le]
-    rintro _ ⟨g, rfl⟩
-    exact hx g
-  rw [span_orbit τ hirr x hx0] at hle
-  exact hφ (LinearMap.ker_eq_top.mp (top_le_iff.mp hle))
-
 private lemma select {ι M : Type} [AddCommGroup M] [Module K M] [FiniteDimensional K M]
     (f : ι → M) (r : ℕ) (hr : finrank K (Submodule.span K (Set.range f)) = r) :
-    ∃ s : Fin r → ι, LinearIndependent K (f ∘ s) := by
+    ∃ s : Fin r → ι, LinearIndependent K (f ∘ s) ∧
+      Submodule.span K (Set.range (f ∘ s)) = Submodule.span K (Set.range f) := by
   obtain ⟨κ, a, -, hsp, hli⟩ := exists_linearIndependent' K f
   have : Finite κ := hli.finite
   let _ : Fintype κ := Fintype.ofFinite κ
   have hc : Fintype.card κ = r := by
     rw [← finrank_span_eq_card hli, hsp, hr]
   let e : Fin r ≃ κ := (Fintype.equivFinOfCardEq hc).symm
-  exact ⟨a ∘ e, hli.comp e e.injective⟩
+  refine ⟨a ∘ e, hli.comp e e.injective, ?_⟩
+  rw [← Function.comp_assoc, e.surjective.range_comp]
+  exact hsp
 
-theorem goal1 (τ : Representation K G T)
+theorem goal1 [FiniteDimensional K T] (τ : Representation K G T)
     (hirr : ∀ W : Submodule K T, (∀ g : G, ∀ w ∈ W, τ g w ∈ W) → W = ⊥ ∨ W = ⊤)
     (ε₀ ε : T →ₗ[K] T) (h1 : finrank K (LinearMap.range ε₀) = 1) :
     ∃ (γ δ : Fin (finrank K (LinearMap.range ε)) → G)
@@ -75,44 +68,24 @@ theorem goal1 (τ : Representation K G T)
   have hspanT := span_orbit τ hirr v hv
   have hspanR : Submodule.span K (Set.range fun g => ε (τ g v)) = LinearMap.range ε := by
     rw [Set.range_comp', ← Submodule.map_span, hspanT, Submodule.map_top]
-  obtain ⟨γ, hγ⟩ := select (fun g => ε (τ g v)) (finrank K (LinearMap.range ε)) (by rw [hspanR])
-  have hle : Submodule.span K (Set.range ((fun g => ε (τ g v)) ∘ γ)) ≤ LinearMap.range ε := by
-    rw [Submodule.span_le]
-    rintro _ ⟨j, rfl⟩
-    exact LinearMap.mem_range_self _ _
-  have hueq : Submodule.span K (Set.range ((fun g => ε (τ g v)) ∘ γ)) = LinearMap.range ε :=
-    Submodule.eq_of_le_of_finrank_eq hle (by rw [finrank_span_eq_card hγ, Fintype.card_fin])
+  obtain ⟨γ, hγ, hγspan⟩ := select (fun g => ε (τ g v)) (finrank K (LinearMap.range ε))
+    (by rw [hspanR])
+  have hueq := hγspan.trans hspanR
   let w : G → Fin (finrank K (LinearMap.range ε)) → K := fun g j => φ (τ g (ε (τ (γ j) v)))
   have hw : Submodule.span K (Set.range w) = ⊤ := by
-    by_contra hne
-    obtain ⟨ℓ, hℓ, hle'⟩ := Submodule.exists_le_ker_of_lt_top _ (lt_top_iff_ne_top.mpr hne)
-    apply hℓ
-    let b : Fin (finrank K (LinearMap.range ε)) → K := fun j => ℓ (fun k => if j = k then 1 else 0)
-    have key : ∀ g, ∑ j, w g j • b j = 0 := by
-      intro g
-      have := hle' (Submodule.subset_span ⟨g, rfl⟩)
-      rw [LinearMap.mem_ker, LinearMap.pi_apply_eq_sum_univ] at this
-      exact this
-    have hx : ∑ j, b j • ε (τ (γ j) v) = 0 := by
-      apply orbit_ker τ hirr φ hφ
-      intro g
-
-      simp only [map_sum, map_smul, smul_eq_mul]
-      have := key g
-      simp only [w, smul_eq_mul] at this
-      rw [← this]
-      exact Finset.sum_congr rfl fun j _ => mul_comm _ _
-    have hz := Fintype.linearIndependent_iff.mp hγ b hx
-    refine LinearMap.ext fun y => ?_
-    rw [LinearMap.pi_apply_eq_sum_univ, LinearMap.zero_apply]
-    exact Finset.sum_eq_zero fun j _ => by
-      have : ℓ (fun k => if j = k then 1 else 0) = 0 := hz j
-      rw [this, smul_zero]
-  obtain ⟨δ, hδ⟩ := select w (finrank K (LinearMap.range ε))
+    let evalOrbit : T →ₗ[K] G → K := LinearMap.pi fun g => φ ∘ₗ τ g
+    have hker : LinearMap.ker evalOrbit = ⊥ := by
+      apply LinearMap.ker_eq_bot'.mpr
+      intro x hx
+      by_contra hx0
+      exact hφ (LinearMap.ext_on_range (span_orbit τ hirr x hx0)
+        (fun g => congrFun hx g))
+    exact span_flip_eq_top_iff_linearIndependent.mpr (hγ.map' evalOrbit hker)
+  obtain ⟨δ, hδ, -⟩ := select w (finrank K (LinearMap.range ε))
     (by rw [hw, finrank_top, Module.finrank_fin_fun])
   let c : Matrix (Fin (finrank K (LinearMap.range ε))) (Fin (finrank K (LinearMap.range ε))) K :=
     Matrix.of fun i j => φ (τ (δ i) (ε (τ (γ j) v)))
-  have hc : IsUnit c := Matrix.linearIndependent_rows_iff_isUnit.mp hδ
+  have hc : IsUnit c := Matrix.linearIndependent_row_iff_isUnit.mp hδ
   have hcd : IsUnit c.det := (Matrix.isUnit_iff_isUnit_det c).mp hc
   refine ⟨γ, δ, c, hcd.ne_zero, ?_, ?_, ?_⟩
   · intro i j
