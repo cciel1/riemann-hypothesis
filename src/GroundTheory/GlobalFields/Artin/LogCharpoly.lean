@@ -105,7 +105,55 @@ theorem coe_derivative_charpolyRev (M : Matrix n n R) :
     Matrix.derivative_det_one_add_X_smul, Matrix.trace_neg, ← coe_charpolyRev,
     ← trace_matrixGeomSeries_mul, mul_neg, neg_mul]
 
+/-- Newton's recurrence for the coefficients of the reverse characteristic polynomial. -/
+theorem charpolyRev_coeff_succ_mul (M : Matrix n n R) (m : ℕ) :
+    M.charpolyRev.coeff (m + 1) * (m + 1 : R) =
+      -∑ p ∈ Finset.antidiagonal m, M.charpolyRev.coeff p.1 * (M ^ (p.2 + 1)).trace := by
+  simpa only [Polynomial.coeff_coe, Polynomial.coeff_derivative, map_neg,
+    PowerSeries.coeff_mul, PowerSeries.coeff_mk, neg_mul] using
+    congrArg (PowerSeries.coeff (R := R) m) (coe_derivative_charpolyRev M)
+
 end MatrixJacobi
+
+section Traces
+
+open Finset
+
+variable {R ι ι' : Type*} [CommRing R] [HasUniqueDiv R] [Fintype ι] [DecidableEq ι]
+  [Fintype ι'] [DecidableEq ι']
+
+/-- Agreement of the first `d` power traces determines the degree-`d` coefficient of the
+reverse characteristic polynomial, even for matrices of different sizes. -/
+theorem coeff_charpolyRev_eq_of_trace_powers (A : Matrix ι ι R) (B : Matrix ι' ι' R) (d : ℕ)
+    (h : ∀ j, 0 < j → j ≤ d → (A ^ j).trace = (B ^ j).trace) :
+    A.charpolyRev.coeff d = B.charpolyRev.coeff d := by
+  induction d using Nat.strong_induction_on with
+  | _ d ih =>
+    cases d with
+    | zero => simp [Polynomial.coeff_zero_eq_eval_zero, Matrix.eval_charpolyRev]
+    | succ m =>
+      apply nsmul_right_injective (M := R) (Nat.succ_ne_zero m)
+      simp only [nsmul_eq_mul', Nat.cast_succ]
+      rw [charpolyRev_coeff_succ_mul, charpolyRev_coeff_succ_mul]
+      congr 1
+      refine Finset.sum_congr rfl fun p hp => ?_
+      have := Finset.HasAntidiagonal.mem_antidiagonal.mp hp
+      rw [ih p.1 (by lia) (fun j hj hle => h j hj (by lia)), h _ (by lia) (by lia)]
+
+/-- Matrices of size `n` have equal characteristic polynomials if their first `n` positive
+power traces agree. -/
+theorem charpoly_eq_of_trace_powers (A B : Matrix ι ι R)
+    (h : ∀ m, 0 < m → m ≤ Fintype.card ι → (A ^ m).trace = (B ^ m).trace) :
+    A.charpoly = B.charpoly := by
+  nontriviality R
+  apply (Polynomial.ext_iff_natDegree_le A.charpoly_natDegree_eq_dim.le B.charpoly_natDegree_eq_dim.le).mpr
+  intro i hi
+  have he := coeff_charpolyRev_eq_of_trace_powers A B (Fintype.card ι - i)
+    (fun j hj hj' => h j hj (by lia))
+  simpa only [← Matrix.reverse_charpoly, Polynomial.coeff_reverse, Matrix.charpoly_natDegree_eq_dim,
+    Polynomial.revAt_le (Nat.sub_le ..), Nat.sub_sub_self hi] using he
+
+end Traces
 
 section LogSeries
 
@@ -143,29 +191,15 @@ theorem reverse_charpoly_eq_of_trace_pow_eq [CharZero k] (A : Module.End k W)
     (B : Module.End k W')
     (h : ∀ m, 0 < m → LinearMap.trace k W (A ^ m) = LinearMap.trace k W' (B ^ m)) :
     A.charpoly.reverse = B.charpoly.reverse := by
-  set P : PowerSeries k := ((A.charpoly.reverse : k[X]) : PowerSeries k) with hPdef
-  set Q : PowerSeries k := ((B.charpoly.reverse : k[X]) : PowerSeries k) with hQdef
-  set D : PowerSeries k := PowerSeries.mk fun m => LinearMap.trace k W (A ^ (m + 1))
-  have hP : PowerSeries.constantCoeff P = 1 := constantCoeff_reverse_charpoly A
-  have hQ : PowerSeries.constantCoeff Q = 1 := constantCoeff_reverse_charpoly B
-  have hQQ : Q⁻¹ * Q = 1 := PowerSeries.inv_mul_cancel Q (by rw [hQ]; exact one_ne_zero)
-  have hdP : PowerSeries.derivative P = -P * D := by
-    rw [hPdef, PowerSeries.derivative_coe, coe_derivative_reverse_charpoly]
-  have hdQ : PowerSeries.derivative Q = -Q * D := by
-    rw [hQdef, PowerSeries.derivative_coe, coe_derivative_reverse_charpoly]
-    congr 2
-    funext m
-    exact (h (m + 1) m.succ_pos).symm
-  have h1 : P * Q⁻¹ = 1 := by
-    apply PowerSeries.derivative.ext
-    · rw [Derivation.leibniz, PowerSeries.derivative_inv', hdP, hdQ,
-        Derivation.map_one_eq_zero, smul_eq_mul, smul_eq_mul]
-      linear_combination (P * Q⁻¹ * D) * hQQ
-    · rw [map_mul, PowerSeries.constantCoeff_inv, hP, hQ, map_one, inv_one, mul_one]
-  have h2 : P = Q := by
-    calc P = P * (Q⁻¹ * Q) := by rw [hQQ, mul_one]
-      _ = Q := by rw [← mul_assoc, h1, one_mul]
-  exact Polynomial.coe_inj.1 h2
+  classical
+  let b := Module.finBasis k W
+  let b' := Module.finBasis k W'
+  rw [reverse_charpoly_eq_charpolyRev b, reverse_charpoly_eq_charpolyRev b']
+  ext d
+  apply coeff_charpolyRev_eq_of_trace_powers
+  intro n hn _
+  simpa only [LinearMap.trace_eq_matrix_trace k b, LinearMap.trace_eq_matrix_trace k b',
+    LinearMap.toMatrix_pow] using h n hn
 
 end Endomorphism
 
