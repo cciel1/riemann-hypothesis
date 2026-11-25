@@ -1,5 +1,7 @@
 module
 
+import Mathlib.LinearAlgebra.Eigenspace.Triangularizable
+import Mathlib.Order.Minimal
 public import Mathlib.FieldTheory.IsAlgClosed.Basic
 import Mathlib.Algebra.Order.Floor.Extended
 import Mathlib.Algebra.Order.Floor.Semifield
@@ -45,50 +47,39 @@ import Mathlib.Topology.Sheaves.Init
 
 @[expose] public section
 
+namespace GlobalTheory
+
+/-- A commuting family has a common eigenvector in every nonzero finite-dimensional invariant
+subspace. -/
+theorem exists_common_eigenvector_mem {K V ι : Type*} [Field K] [IsAlgClosed K] [AddCommGroup V]
+    [Module K V] (T : ι → V →ₗ[K] V)
+    (hT : ∀ i j v, T i (T j v) = T j (T i v)) (W : Submodule K V) [FiniteDimensional K W] (hW : W ≠ ⊥)
+    (hs : ∀ i, ∀ v ∈ W, T i v ∈ W) :
+    ∃ v ∈ W, v ≠ 0 ∧ ∀ i, ∃ l : K, T i v = l • v := by
+  let P (U : Submodule K V) := U ≤ W ∧ U ≠ ⊥ ∧ ∀ i, ∀ v ∈ U, T i v ∈ U
+  obtain ⟨U, hmin⟩ := exists_minimalFor_of_wellFoundedLT P (Module.finrank K ·)
+    ⟨W, le_rfl, hW, hs⟩
+  obtain ⟨hUW, hU, hstable⟩ := hmin.prop
+  have := Submodule.finiteDimensional_of_le hUW
+  have := Submodule.nontrivial_iff_ne_bot.mpr hU
+  obtain ⟨v, hv, hv0⟩ := Submodule.exists_mem_ne_zero_of_ne_bot hU
+  refine ⟨v, hUW hv, hv0, fun i => ?_⟩
+  obtain ⟨c, hc⟩ := Module.End.exists_eigenvalue ((T i).restrict (hstable i))
+  have hinv : P (U ⊓ Module.End.eigenspace (T i) c) := by
+    refine ⟨inf_le_left.trans hUW, ?_, fun j x hx => ⟨hstable j x hx.1, ?_⟩⟩
+    · exact fun h => hc (Module.End.eigenspace_restrict_eq_bot (hstable i) (disjoint_iff.mpr h).symm)
+    · exact Module.End.mapsTo_genEigenspace_of_comm (LinearMap.ext (hT i j)) c 1 hx.2
+  have heq : U ⊓ Module.End.eigenspace (T i) c = U :=
+    Submodule.eq_of_le_of_finrank_le inf_le_left (hmin.le hinv)
+  exact ⟨c, Module.End.mem_eigenspace_iff.mp ((inf_eq_left.mp heq) hv)⟩
+
+end GlobalTheory
+
 theorem UpperTheory.V.LinAlg.simEig :
     ∀ {K M : Type} [Field K] [IsAlgClosed K] [AddCommGroup M] [Module K M] [FiniteDimensional K M]
         {J : Type} (T : J → Module.End K M), (∀ i j : J, T i * T j = T j * T i) →
         ∀ (d : ℕ) (U : Submodule K M), Module.finrank K U = d → U ≠ ⊥ → (∀ j : J, ∀ x ∈ U, T j x ∈ U) →
         ∃ v ∈ U, v ≠ 0 ∧ ∀ j : J, ∃ c : K, T j v = c • v := by
   intro K M _ _ _ _ _ J T hT _ U _ hU hst
-  let A : Subalgebra K (Module.End K M) := Algebra.adjoin K (Set.range T)
-  have hA : ∀ a ∈ A, (∀ x ∈ U, a x ∈ U) ∧ ∀ j, a * T j = T j * a := by
-    intro a ha
-    induction ha using Algebra.adjoin_induction with
-    | mem a h => obtain ⟨i, rfl⟩ := h; exact ⟨hst i, hT i⟩
-    | algebraMap r => exact ⟨fun x hx => U.smul_mem r hx, fun j => Algebra.commutes r _⟩
-    | add a b _ _ ha hb =>
-      exact ⟨fun x hx => U.add_mem (ha.1 x hx) (hb.1 x hx),
-        fun j => by rw [add_mul, mul_add, ha.2, hb.2]⟩
-    | mul a b _ _ ha hb =>
-      exact ⟨fun x hx => ha.1 _ (hb.1 x hx),
-        fun j => by rw [mul_assoc, hb.2, ← mul_assoc, ha.2, mul_assoc]⟩
-  let U' : Submodule A M :=
-    { carrier := U
-      add_mem' := fun hx hy => U.add_mem hx hy
-      zero_mem' := U.zero_mem
-      smul_mem' := fun a x hx => (hA a.1 a.2).1 x hx }
-  have hU' : U' ≠ ⊥ := by
-    intro h
-    apply hU
-    rw [Submodule.eq_bot_iff] at h ⊢
-    exact h
-  haveI : IsArtinian A M := isArtinian_of_tower K inferInstance
-  obtain ⟨S, hS, hSU⟩ := (eq_bot_or_exists_atom_le U').resolve_left hU'
-  haveI : IsSimpleModule A S := isSimpleModule_iff_isAtom.2 hS
-  haveI : FiniteDimensional K S :=
-    FiniteDimensional.of_injective (S.subtype.restrictScalars K) Subtype.val_injective
-  obtain ⟨v, hv, hv0⟩ := Submodule.exists_mem_ne_zero_of_ne_bot hS.1
-  refine ⟨v, hSU hv, hv0, fun j => ?_⟩
-  let t : A := ⟨T j, Algebra.subset_adjoin ⟨j, rfl⟩⟩
-  let f : Module.End A S :=
-    { toFun := fun x => ⟨t • (x : M), S.smul_mem t x.property⟩
-      map_add' := fun x y => smul_add t x y
-      map_smul' := fun a x => by
-        apply Subtype.ext
-        exact (LinearMap.congr_fun ((hA a.1 a.2).2 j) (x : M)).symm }
-  obtain ⟨c, hc⟩ := (IsSimpleModule.algebraMap_end_bijective_of_isAlgClosed K (A := A) (V := S)).2 f
-  refine ⟨c, ?_⟩
-  have h := congrArg Subtype.val (LinearMap.congr_fun hc ⟨v, hv⟩)
-  change c • v = T j v at h
-  exact h.symm
+  exact GlobalTheory.exists_common_eigenvector_mem T (fun i j => LinearMap.congr_fun (hT i j))
+    U hU hst

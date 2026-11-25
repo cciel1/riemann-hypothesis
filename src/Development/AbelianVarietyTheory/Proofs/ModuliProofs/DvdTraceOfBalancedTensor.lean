@@ -1,5 +1,6 @@
 module
 
+public import Development.WeilBound.SimpleEigenvalues.SimpleEigenvalueExtension.SimEig
 public import Mathlib.FieldTheory.IsAlgClosed.Basic
 public import Mathlib.RingTheory.LocalRing.MaximalIdeal.Defs
 public import Mathlib.RingTheory.Trace.Defs
@@ -65,34 +66,6 @@ open scoped TensorProduct
 
 namespace GlobalTheory
 
-theorem exists_common_eigenvector_mem {K V ι : Type*} [Field K] [IsAlgClosed K] [AddCommGroup V]
-    [Module K V] [FiniteDimensional K V] (T : ι → V →ₗ[K] V)
-    (hT : ∀ i j v, T i (T j v) = T j (T i v)) (W : Submodule K V) (hW : W ≠ ⊥)
-    (hs : ∀ i, ∀ v ∈ W, T i v ∈ W) :
-    ∃ v ∈ W, v ≠ 0 ∧ ∀ i, ∃ l : K, T i v = l • v := by
-  obtain ⟨U, ⟨hUW, hU0, hUs⟩, hmin⟩ :=
-    (wellFounded_lt (α := Submodule K V)).has_min
-      {U | U ≤ W ∧ U ≠ ⊥ ∧ ∀ i, ∀ v ∈ U, T i v ∈ U} ⟨W, le_rfl, hW, hs⟩
-  obtain ⟨v, hvU, hv0⟩ := (Submodule.ne_bot_iff U).1 hU0
-  refine ⟨v, hUW hvU, hv0, fun i => ?_⟩
-  haveI : Nontrivial U := Submodule.nontrivial_iff_ne_bot.2 hU0
-  obtain ⟨l, hl⟩ := Module.End.exists_eigenvalue ((T i).restrict (hUs i))
-  obtain ⟨w, hw⟩ := hl.exists_hasEigenvector
-  have hw1 : T i w = l • (w : V) := congrArg Subtype.val hw.apply_eq_smul
-  have hw0 : (w : V) ≠ 0 := fun h => hw.2 (Subtype.ext h)
-  let U' : Submodule K V := U ⊓ LinearMap.ker (T i - l • LinearMap.id)
-  have hmem : ∀ x, x ∈ U' ↔ x ∈ U ∧ T i x = l • x := by
-    intro x
-    simp [U', sub_eq_zero]
-  have hU' : U' = U := by
-    by_contra hne
-    refine hmin U' ⟨le_trans inf_le_left hUW, ?_, ?_⟩ (lt_of_le_of_ne inf_le_left hne)
-    · exact (Submodule.ne_bot_iff _).2 ⟨w, (hmem _).2 ⟨w.2, hw1⟩, hw0⟩
-    · intro j x hx
-      obtain ⟨h1, h2⟩ := (hmem x).1 hx
-      exact (hmem _).2 ⟨hUs j x h1, by rw [hT, h2, map_smul]⟩
-  exact ⟨l, ((hmem v).1 (hU'.symm ▸ hvU)).2⟩
-
 section
 variable {O H : Type*} [CommRing O] [CommRing H] [Algebra O H]
 
@@ -103,15 +76,13 @@ theorem lTensor_comp_mulLeft_of_balanced {N : Type*} [AddCommGroup N] [Module O 
   have h1 : ∀ t : H ⊗[O] H, LinearMap.lTensor H (α ∘ₗ LinearMap.mulLeft O h) t
       = LinearMap.lTensor H α (((1 : H) ⊗ₜ[O] h) * t) := by
     intro t
-    induction t using TensorProduct.induction_on with
-    | zero => simp
+    induction t using TensorProduct.inductionOn with
     | tmul x y => simp
     | add x y hx hy => simp only [map_add (f := _), mul_add, hx, hy]
   have h2 : ∀ t : H ⊗[O] H, h • LinearMap.lTensor H α t
       = LinearMap.lTensor H α ((h ⊗ₜ[O] (1 : H)) * t) := by
     intro t
-    induction t using TensorProduct.induction_on with
-    | zero => simp
+    induction t using TensorProduct.inductionOn with
     | tmul x y => simp [TensorProduct.smul_tmul']
     | add x y hx hy => simp only [map_add (f := _), mul_add, smul_add, hx, hy]
   rw [h1, h2, hΘ]
@@ -126,8 +97,7 @@ theorem contractRight_apply (Θ : H ⊗[O] H) (α : Module.Dual O H) :
 
 theorem sum_contractRight_coord_tmul {ι : Type*} [Fintype ι] (b : Module.Basis ι O H)
     (Θ : H ⊗[O] H) : ∑ j, contractRight Θ (b.coord j) ⊗ₜ[O] b j = Θ := by
-  induction Θ using TensorProduct.induction_on with
-  | zero => simp [contractRight_apply]
+  induction Θ using TensorProduct.inductionOn with
   | tmul x y =>
     simp only [contractRight_apply, LinearMap.lTensor_tmul, TensorProduct.rid_tmul,
       TensorProduct.smul_tmul, ← TensorProduct.tmul_sum, Module.Basis.coord_apply, b.sum_repr]
@@ -145,8 +115,7 @@ theorem contractRight_trace {ι : Type*} [Fintype ι] [DecidableEq ι] (b : Modu
   have hr : ∀ (h : H) (t : H ⊗[O] O),
       TensorProduct.rid O H (h • t) = h * TensorProduct.rid O H t := by
     intro h t
-    induction t using TensorProduct.induction_on with
-    | zero => simp
+    induction t using TensorProduct.inductionOn with
     | tmul x y => simp [TensorProduct.smul_tmul']
     | add x y hx hy => simp only [map_add (f := _), mul_add, smul_add, hx, hy]
   conv_rhs => rw [← sum_contractRight_coord_tmul b Θ]
@@ -164,7 +133,7 @@ theorem eq_zero_of_lTensor_eq_zero_of_balanced [Module.Free O H] [Module.Finite 
   classical
   by_contra hne
   let b := Module.Free.chooseBasis O H
-  haveI : FiniteDimensional K (H →ₗ[O] K) := Module.Finite.equiv (b.constr K)
+  have : FiniteDimensional K (H →ₗ[O] K) := Module.Finite.equiv (b.constr K)
   have hsm : ∀ (l : K) (a : H →ₗ[O] K), LinearMap.lTensor H a Θ = 0 →
       LinearMap.lTensor H (l • a) Θ = 0 := by
     intro l a ha
@@ -173,7 +142,7 @@ theorem eq_zero_of_lTensor_eq_zero_of_balanced [Module.Free O H] [Module.Finite 
   let W : Submodule K (H →ₗ[O] K) :=
     { carrier := {a | LinearMap.lTensor H a Θ = 0}
       add_mem' := fun {a b} ha hb => by
-        simp only [Set.mem_setOf_eq] at *
+        simp only [Set.mem_ofPred_eq] at *
         simp [LinearMap.lTensor_add, ha, hb]
       zero_mem' := by simp
       smul_mem' := fun l a ha => hsm l a ha }
@@ -207,8 +176,7 @@ theorem eq_zero_of_lTensor_eq_zero_of_balanced [Module.Free O H] [Module.Finite 
   have : ∀ t : H ⊗[O] H, Algebra.TensorProduct.map (AlgHom.id O H) ga t
       = LinearMap.lTensor H ((v 1)⁻¹ • v) t := by
     intro t
-    induction t using TensorProduct.induction_on with
-    | zero => simp
+    induction t using TensorProduct.inductionOn with
     | tmul x y => simp [ga]
     | add x y hx hy => simp only [map_add (f := _), hx, hy]
   rw [this]
